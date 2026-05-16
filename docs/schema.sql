@@ -46,7 +46,7 @@ create table if not exists public.profiles (
   email       text not null,
   apodo       text,
   estado      text not null default 'pendiente'
-              check (estado in ('pendiente', 'aprobado', 'rechazado')),
+              check (estado in ('pendiente', 'aprobado', 'rechazado', 'solo_lectura')),
   is_admin    boolean not null default false,
   created_at  timestamptz not null default now()
 );
@@ -124,13 +124,8 @@ create schema if not exists private;
 
 
 -- Devuelve true si el usuario de la sesion actual tiene estado = 'aprobado'.
--- Se usa en todas las politicas de stickers y activity.
--- 'security definer' ejecuta con permisos del owner (postgres), no del
--- usuario que llama; esto permite leer profiles aunque el usuario aun
--- no tenga politica de SELECT sobre su propia fila.
--- 'stable' le dice a Postgres que el resultado no cambia dentro de una
--- misma transaccion, habilitando optimizaciones de cache de plan.
--- 'set search_path = public' evita ataques de search_path injection.
+-- Se usa en las politicas de INSERT/UPDATE de stickers: los usuarios de solo
+-- lectura NO pasan este chequeo y por lo tanto no pueden escribir.
 create or replace function private.is_approved()
 returns boolean
 language sql
@@ -140,6 +135,22 @@ as $$
   select exists (
     select 1 from public.profiles
     where id = auth.uid() and estado = 'aprobado'
+  );
+$$;
+
+
+-- Devuelve true si el usuario puede VER datos (aprobado o solo_lectura).
+-- Se usa en la politica SELECT de stickers: ambos roles pueden leer la grilla,
+-- pero solo 'aprobado' puede escribir (is_approved).
+create or replace function private.is_viewer()
+returns boolean
+language sql
+security definer set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from public.profiles
+    where id = auth.uid() and estado in ('aprobado', 'solo_lectura')
   );
 $$;
 
@@ -253,13 +264,14 @@ create policy "profiles: actualizar perfil"
 
 -- ---- STICKERS ----
 --
--- Solo usuarios aprobados pueden ver, insertar o actualizar stickers.
--- No hay politica de DELETE porque la app nunca borra figuritas;
--- los cambios de estado se hacen via UPDATE (upsert en la app).
+-- SELECT: aprobado y solo_lectura pueden ver la grilla (is_viewer).
+-- INSERT/UPDATE: solo aprobado puede escribir (is_approved).
+-- No hay politica de DELETE porque la app nunca borra figuritas.
 drop policy if exists "stickers: ver si aprobado" on public.stickers;
-create policy "stickers: ver si aprobado"
+drop policy if exists "stickers: ver si viewer" on public.stickers;
+create policy "stickers: ver si viewer"
   on public.stickers for select
-  using (private.is_approved());
+  using (private.is_viewer());
 
 drop policy if exists "stickers: insertar si aprobado" on public.stickers;
 create policy "stickers: insertar si aprobado"
@@ -365,6 +377,31 @@ exception when duplicate_object then null; end $$;
 -- ============================================================
 revoke execute on function public.handle_new_user() from public;
 revoke execute on function public.protect_profile_fields() from public;
+
+
+-- ============================================================
+-- MIGRACION: perfil de solo lectura (ejecutar en proyectos existentes)
+-- ============================================================
+-- Si ya tenes datos en produccion, ejecuta este bloque por separado
+-- en el SQL Editor de Supabase para agregar el nuevo rol sin perder datos.
+-- ============================================================
+-- alter table profiles disable trigger protect_profile_fields_trigger;
+--
+-- alter table public.profiles
+--   drop constraint if exists profiles_estado_check;
+-- alter table public.profiles
+--   add constraint profiles_estado_check
+--   check (estado in ('pendiente', 'aprobado', 'rechazado', 'solo_lectura'));
+--
+-- create or replace function private.is_viewer()
+-- returns boolean language sql security definer set search_path = public stable
+-- as $$ select exists (select 1 from public.profiles where id = auth.uid() and estado in ('aprobado','solo_lectura')); $$;
+--
+-- drop policy if exists "stickers: ver si aprobado" on public.stickers;
+-- drop policy if exists "stickers: ver si viewer" on public.stickers;
+-- create policy "stickers: ver si viewer" on public.stickers for select using (private.is_viewer());
+--
+-- alter table profiles enable trigger protect_profile_fields_trigger;
 
 
 -- ============================================================

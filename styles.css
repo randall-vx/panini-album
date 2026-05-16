@@ -1112,6 +1112,7 @@ body.is-admin .admin-only { display: block; }
 .badge.pending { background: rgba(255, 181, 71, 0.15); color: var(--warn); }
 .badge.rejected { background: rgba(255, 85, 119, 0.15); color: var(--danger); }
 .badge.admin { background: rgba(74, 158, 255, 0.15); color: var(--info); }
+.badge.readonly { background: rgba(148, 103, 255, 0.15); color: #9467ff; }
 
 .admin-actions {
   display: flex;
@@ -1130,6 +1131,17 @@ body.is-admin .admin-only { display: block; }
 
 .admin-btn.approve { background: var(--accent); color: #0a0e1a; }
 .admin-btn.reject { background: var(--bg-soft); border: 1px solid var(--danger); color: var(--danger); }
+.admin-btn.readonly { background: var(--bg-soft); border: 1px solid #9467ff; color: #9467ff; }
+
+/* ---- Modo solo lectura ---- */
+.is-readonly .tab:not([data-tab="faltantes"]):not([data-tab="repetidas"]) { display: none; }
+.is-readonly #tab-grilla,
+.is-readonly #tab-actividad,
+.is-readonly #tab-admin { display: none; }
+.is-readonly .repe-chip-minus { display: none; }
+.is-readonly #quickload-toggle,
+.is-readonly #quickload-banner,
+.is-readonly #filter-complete-btn { display: none; }
 
 .admin-self {
   font-size: 11px;

@@ -87,6 +87,14 @@ To adjust for structure changes, edit `data.js`:
 - First user becomes admin and approved automatically
 - Subsequent users enter "pending" state until admin approval
 
+**User Roles (`profiles.estado`):**
+- `pendiente`: newly registered, no access until admin approves
+- `aprobado`: full access — can view and edit stickers, see activity, interact with all tabs
+- `solo_lectura`: read-only access — can only view Faltan and Repes tabs; cannot write stickers, log activity, or see the grid/activity/admin tabs; no UI controls (quickload, filter, repe minus buttons) are rendered
+- `rechazado`: blocked; no access, profile kept for audit
+- Admin routes `solo_lectura` profiles to `enterReadonlyApp()` which sets `document.body.classList.add("is-readonly")` and hides restricted tabs via CSS
+- DB enforcement: `private.is_viewer()` (aprobado OR solo_lectura) gates sticker SELECT; `private.is_approved()` (aprobado only) gates INSERT/UPDATE — so even if JS is bypassed, the DB rejects writes
+
 **Real-time Subscriptions:**
 - Supabase publication `supabase_realtime` includes `stickers` and `activity` tables
 - App subscribes via `sb.channel("stickers-changes")` and updates state on INSERT/UPDATE/DELETE events

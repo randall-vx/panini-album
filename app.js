@@ -120,7 +120,11 @@ async function loadProfileAndRoute() {
     return;
   }
 
-  await enterApp();
+  if (profile.estado === "solo_lectura") {
+    await enterReadonlyApp();
+  } else {
+    await enterApp();
+  }
 }
 
 async function saveNickname() {
@@ -145,7 +149,36 @@ async function saveNickname() {
   }
 
   state.profile.apodo = apodo;
-  await enterApp();
+  if (state.profile.estado === "solo_lectura") {
+    await enterReadonlyApp();
+  } else {
+    await enterApp();
+  }
+}
+
+async function enterReadonlyApp() {
+  showScreen("app");
+  document.getElementById("user-tag").textContent = state.profile.apodo.toUpperCase();
+  document.body.classList.add("is-readonly");
+
+  // Activa la pestaña Faltan por defecto (Grilla está oculta para solo lectura)
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+  document.querySelector('.tab[data-tab="faltantes"]').classList.add("active");
+  document.getElementById("tab-faltantes").classList.add("active");
+
+  loadCache();
+  renderFaltantes();
+  renderRepetidas();
+
+  setupTabs();
+  setupShare();
+  setupLogout();
+
+  await loadStickers();
+  subscribeRealtime();
+  setupPullToRefresh();
+  state.online = true;
 }
 
 async function enterApp() {
@@ -592,6 +625,7 @@ function renderAdminList(profiles) {
     let badge = "";
     if (p.estado === "aprobado") badge = '<span class="badge ok">Aprobado</span>';
     else if (p.estado === "pendiente") badge = '<span class="badge pending">Pendiente</span>';
+    else if (p.estado === "solo_lectura") badge = '<span class="badge readonly">Solo lectura</span>';
     else badge = '<span class="badge rejected">Rechazado</span>';
     if (p.is_admin) badge += ' <span class="badge admin">Admin</span>';
 
@@ -600,12 +634,24 @@ function renderAdminList(profiles) {
       if (p.estado === "pendiente") {
         actions = `
           <button class="admin-btn approve" data-id="${p.id}" data-action="aprobar">Aprobar</button>
+          <button class="admin-btn readonly" data-id="${p.id}" data-action="solo_lectura">Solo lectura</button>
           <button class="admin-btn reject" data-id="${p.id}" data-action="rechazar">Rechazar</button>
         `;
       } else if (p.estado === "aprobado") {
-        actions = `<button class="admin-btn reject" data-id="${p.id}" data-action="rechazar">Quitar acceso</button>`;
+        actions = `
+          <button class="admin-btn readonly" data-id="${p.id}" data-action="solo_lectura">Solo lectura</button>
+          <button class="admin-btn reject" data-id="${p.id}" data-action="rechazar">Quitar acceso</button>
+        `;
+      } else if (p.estado === "solo_lectura") {
+        actions = `
+          <button class="admin-btn approve" data-id="${p.id}" data-action="aprobar">Aprobar completo</button>
+          <button class="admin-btn reject" data-id="${p.id}" data-action="rechazar">Quitar acceso</button>
+        `;
       } else if (p.estado === "rechazado") {
-        actions = `<button class="admin-btn approve" data-id="${p.id}" data-action="aprobar">Aprobar</button>`;
+        actions = `
+          <button class="admin-btn approve" data-id="${p.id}" data-action="aprobar">Aprobar</button>
+          <button class="admin-btn readonly" data-id="${p.id}" data-action="solo_lectura">Solo lectura</button>
+        `;
       }
     } else {
       actions = '<span class="admin-self">Vos</span>';
@@ -631,7 +677,9 @@ function renderAdminList(profiles) {
 }
 
 async function handleAdminAction(profileId, action) {
-  const nuevoEstado = action === "aprobar" ? "aprobado" : "rechazado";
+  const nuevoEstado = action === "aprobar" ? "aprobado"
+                    : action === "solo_lectura" ? "solo_lectura"
+                    : "rechazado";
   const { error } = await sb
     .from("profiles")
     .update({ estado: nuevoEstado })
@@ -640,7 +688,10 @@ async function handleAdminAction(profileId, action) {
     flashStatus("No se pudo actualizar: " + error.message, "error");
     return;
   }
-  flashStatus(action === "aprobar" ? "Usuario aprobado" : "Acceso quitado", "ok");
+  const msg = action === "aprobar" ? "Usuario aprobado"
+            : action === "solo_lectura" ? "Solo lectura activado"
+            : "Acceso quitado";
+  flashStatus(msg, "ok");
   await loadAdminList();
 }
 
